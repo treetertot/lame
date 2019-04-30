@@ -1,15 +1,20 @@
 /// The core of lame
 /// update uses index and world to allow more interaction
-pub trait Entity<T, H: Hitbox<T>>: Sized + Send + Sync {
-    fn update(&self, collision_data: T) -> Self;
+pub trait Entity<T: Sized + Send + Sync>: Sized + Send + Sync {
+    fn update(&self, collision_data: Option<T>) -> Self;
     fn center(&self) -> (f32, f32);
-    fn get_hitbox(&self) -> &H;
+    fn resolve(&self, other: &Self) -> Option<T>;
 }
 
-pub trait Hitbox<T> {
-    fn resolve(&self, other: &Self) -> T;
-}
-
-pub fn run<T, H: Hitbox<T>, E: Entity<T, H>>(index: usize, world: &Vec<E>) {
-    
+pub fn run<E: Entity>(index: usize, world: &Vec<E>) {
+    let entity = &world[index];
+    let mut it = world.iter().enumerate();
+    let resolution = loop {
+        match it.next() {
+            Some((i, other)) => if i == index {
+                
+            },
+            None => break None,
+        }
+    }
 }
