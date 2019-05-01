@@ -1,3 +1,4 @@
+use std::sync::RwLockReadGuard;
 /// The core of lame
 /// update uses index and world to allow more interaction
 pub trait Entity<T: Sized + Send + Sync>: Sized + Send + Sync {
@@ -6,7 +7,7 @@ pub trait Entity<T: Sized + Send + Sync>: Sized + Send + Sync {
     fn resolve(&self, other: &Self) -> Option<T>;
 }
 
-pub fn run<T: Sized + Send + Sync, E: Entity<T>>(index: usize, world: &Vec<E>) -> E {
+pub fn run<T: Sized + Send + Sync, E: Entity<T>>(index: usize, world: RwLockReadGuard<Vec<E>>) -> E {
     let entity = &world[index];
     let mut it = world.iter().enumerate();
     let resolution = loop {
