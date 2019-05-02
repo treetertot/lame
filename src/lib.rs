@@ -8,4 +8,3 @@ mod tests {
 
 pub mod entity;
 pub mod world;
-pub mod dispatcher;

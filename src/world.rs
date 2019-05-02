@@ -1,12 +1,24 @@
-use std::sync::{RwLock, RwLockReadGuard};
+use std::sync::{RwLock, RwLockReadGuard, Arc};
+use std::thread;
 
 use crate::entity::{Entity};
 
+#[derive(Clone)]
 pub struct World<E: Entity> {
-    pub entities: RwLock<Vec<RwLock<E>>>,
+    pub entities: Arc<RwLock<Vec<RwLock<E>>>>,
 }
 
 impl<E: Entity> World<E> {
+    pub fn new() -> World<E> {
+        let world = World{entities: Arc::new(RwLock::new(Vec::new()))};
+        for i in 0..2 {
+            let world = world.clone();
+            thread::spawn(move || {
+                world.run_offset(i, 3)
+            });
+        }
+        world
+    }
     pub fn push(&self, entity: E) {
         self.entities.write().unwrap().push(RwLock::new(entity));
     }
