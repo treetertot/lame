@@ -12,13 +12,15 @@ pub struct World<E: Entity> {
 impl<E: Entity> World<E> {
     pub fn new() -> World<E> {
         let world = World{entities: Arc::new(RwLock::new(Vec::new()))};
+        world
+    }
+    pub fn start(&self) {
         for i in 0..2 {
-            let world = world.clone();
+            let world = self.clone();
             thread::spawn(move || {
                 world.run_offset(i, 3)
             });
         }
-        world
     }
     pub fn push(&self, entity: E) {
         self.entities.write().unwrap().push(RwLock::new(entity));
