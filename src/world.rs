@@ -1,5 +1,6 @@
 use std::sync::{RwLock, RwLockReadGuard, Arc};
 use std::thread;
+use std::time::Instant;
 
 use crate::entity::{Entity};
 
@@ -30,8 +31,22 @@ impl<E: Entity> World<E> {
     }
     pub fn run_offset(&self, start: usize, amount: usize) {
 		let list = self.read_list();
-		for i in (start..list.len()).step_by(amount) {
-			E::update(i, self);
-		}
+        let mut deltas: Vec<Instant> = Vec::new();
+        loop {
+            let mut last_step = 0;
+		    for (step, i) in (start..list.len()).step_by(amount).enumerate() {
+                if step == deltas.len() {
+                    deltas.push(Instant::now())
+                }
+                let delta = deltas[step].elapsed().as_millis() as f32 * 1000.0;
+                last_step = step;
+			    E::update(i, self, delta);
+		    }
+            if deltas.len() > last_step + 1 {
+                for _ in (last_step + 1)..deltas.len() {
+                    deltas.pop();
+                }
+            }
+        }
 	}
 }
