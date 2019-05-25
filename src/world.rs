@@ -18,7 +18,7 @@ impl<E: Entity> World<E> {
         for i in 0..2 {
             let world = self.clone();
             thread::spawn(move || {
-                world.run_offset(i, 3)
+                world.run_offset(i, 2)
             });
         }
     }
