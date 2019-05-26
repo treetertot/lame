@@ -40,7 +40,7 @@ impl<E: Entity> World<E> {
                 if step == deltas.len() {
                     deltas.push(Instant::now())
                 }
-                let delta = deltas[step].elapsed().as_millis() as f32 / 1000.0;
+                let delta = deltas[step].elapsed().as_micros() as f32 / 1000000.0;
                 deltas[step] = Instant::now();
                 last_step = step;
 			    E::update(i, self, delta);
