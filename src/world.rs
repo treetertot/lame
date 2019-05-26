@@ -32,10 +32,10 @@ impl<E: Entity> World<E> {
         self.entities.read().unwrap()
     }
     pub fn run_offset(&self, start: usize, amount: usize) {
-		let list = self.read_list();
         let mut deltas: Vec<Instant> = Vec::new();
         loop {
             let mut last_step = 0;
+            let list = self.read_list();
 		    for (step, i) in (start..list.len()).step_by(amount).enumerate() {
                 if step == deltas.len() {
                     deltas.push(Instant::now())
