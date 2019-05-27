@@ -15,10 +15,11 @@ impl<E: Entity> World<E> {
         world
     }
     pub fn start(&self) {
-        for i in 0..2 {
+        let cpus = num_cpus::get() - 1;
+        for i in 0..cpus {
             let world = self.clone();
             thread::spawn(move || {
-                world.run_offset(i, 2)
+                world.run_offset(i, cpus)
             });
         }
     }
