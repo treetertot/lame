@@ -15,7 +15,7 @@ impl<E: Entity> World<E> {
         world
     }
     pub fn start(&self) {
-        let cpus = 1;
+        let cpus = num_cpus::get() - 1;
         for i in 0..cpus {
             let world = self.clone();
             thread::spawn(move || {
