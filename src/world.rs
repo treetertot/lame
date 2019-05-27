@@ -51,6 +51,7 @@ impl<E: Entity> World<E> {
                     deltas.pop();
                 }
             }
+            std::thread::yield_now();
         }
 	}
 }
