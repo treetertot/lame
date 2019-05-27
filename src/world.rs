@@ -1,6 +1,6 @@
 use std::sync::{RwLock, RwLockReadGuard, Arc};
 use std::thread;
-use std::time::Instant;
+use std::time::{Instant, Duration};
 
 use crate::entity::{Entity};
 
@@ -51,7 +51,7 @@ impl<E: Entity> World<E> {
                     deltas.pop();
                 }
             }
-            std::thread::sleep_ms(1);
+            std::thread::sleep(Duration::new(0, 1));
         }
 	}
 }
