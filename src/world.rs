@@ -1,56 +1,60 @@
-use std::sync::{RwLock, RwLockReadGuard, Arc};
-use std::thread;
-use std::time::{Instant, Duration};
+use crate::entity::Entity;
+use crate::ops::Ops::*;
+use rayon::prelude::*;
+use std::sync::Mutex;
+use std::mem;
 
-use crate::entity::{Entity};
-
-#[derive(Clone)]
-pub struct World<E: Entity> {
-    pub entities: Arc<RwLock<Vec<RwLock<E>>>>,
+pub struct World<S: 'static + Send + Sync + Sized, E: Entity<S>> {
+    pub shared: S,
+    pub entities: Vec<E>
 }
-
-impl<E: Entity> World<E> {
-    pub fn new() -> World<E> {
-        let world = World{entities: Arc::new(RwLock::new(Vec::new()))};
-        world
-    }
-    pub fn start(&self) {
-        let cpus = num_cpus::get() - 1;
-        for i in 0..cpus {
-            let world = self.clone();
-            thread::spawn(move || {
-                world.run_offset(i, cpus)
-            });
+impl<S: 'static + Send + Sync + Sized, E: Entity<S>> World<S, E> {
+    pub fn run(&mut self) {
+        let list_ops = Mutex::new(Vec::new());
+        (&mut self.entities).par_iter_mut().enumerate().for_each(|(i, ent)| match ent.update() {
+            None => (),
+            Some(ops) => {
+                let mut new_ops = Vec::new();
+                for op in ops {
+                    match op {
+                        Kill => new_ops.push(SecretOps::Kill(i)),
+                        Spawn(to_spawn) => new_ops.push(SecretOps::Spawn(to_spawn)),
+                    }
+                }
+                list_ops.lock().unwrap().append(&mut new_ops);
+            },
+        });
+        let derefed = &mut *list_ops.lock().unwrap();
+        if derefed.len() == 0 {
+            return;
         }
-    }
-    pub fn push(&self, entity: E) {
-        self.entities.write().unwrap().push(RwLock::new(entity));
-    }
-    pub fn kill(&self, number: usize) {
-        self.entities.write().unwrap().remove(number);
-    }
-    pub fn read_list(&self) -> RwLockReadGuard<Vec<RwLock<E>>> {
-        self.entities.read().unwrap()
-    }
-    pub fn run_offset(&self, start: usize, amount: usize) {
-        let mut deltas: Vec<Instant> = Vec::new();
-        loop {
-            let mut last_step = 0;
-            let list = self.read_list();
-		    for (step, i) in (start..list.len()).step_by(amount).enumerate() {
-                if step == deltas.len() {
-                    deltas.push(Instant::now())
-                }
-                let delta = deltas[step].elapsed().as_micros() as f32 / 1000000.0;
-                deltas[step] = Instant::now();
-                last_step = step;
-			    E::update(i, self, delta);
-		    }
-            if deltas.len() > last_step + 1 {
-                for _ in (last_step + 1)..deltas.len() {
-                    deltas.pop();
-                }
+        let mut switcher = Vec::new();
+        mem::swap(derefed, &mut switcher);
+        let mut deletions = Vec::new();
+        for op in switcher {
+            match op {
+                SecretOps::Spawn(to_spawn) => self.entities.push(to_spawn),
+                SecretOps::Kill(num) => {
+                    let actual_num = num - nums_before(&deletions, num);
+                    deletions.push(num);
+                    self.entities.remove(actual_num);
+                },
             }
         }
-	}
+    }
+}
+
+fn nums_before(v: &Vec<usize>, num: usize) -> usize {
+    let mut bef = 0;
+    for &numb in v.iter() {
+        if numb < num {
+            bef += 1;
+        }
+    }
+    bef
+}
+
+enum SecretOps<T> {
+    Kill(usize),
+    Spawn(T),
 }

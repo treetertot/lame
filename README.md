@@ -6,4 +6,7 @@ I made this repository for a rewrite, but never got around to it. UNTIL NOW!
 
 Since the sad loss of lame I have learned the rust programming language and found it much better suited to the task.
 That being said the go threadpool was pretty neat and let me simulate an absurd number of bouncing boxes.
-Due to the way I handled entities in go being horribly not thread safe, I can't replicate that lame, but due to crossbeam and rust's incredible concurrency I can still use a threadpool.
+Due to the way I handled entities in go being horribly not thread safe, I can't replicate that lame, but due to rayon and rust's incredible concurrency I can still use a threadpool.
+
+update: Love the optimism from past Josh, so I'll leave it. Anyway, this is now just a game-centered wrapper for rayon.
+This is worse than specs in almost every way, but hopefully easier to use.
