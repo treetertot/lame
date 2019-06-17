@@ -3,15 +3,19 @@ use crate::ops::Ops::*;
 use rayon::prelude::*;
 use std::sync::Mutex;
 use std::mem;
+use std::time::Instant;
 
 pub struct World<S: 'static + Send + Sync + Sized, E: Entity<S>> {
     pub shared: S,
-    pub entities: Vec<E>
+    pub entities: Vec<E>,
+    time: Instant,
 }
 impl<S: 'static + Send + Sync + Sized, E: Entity<S>> World<S, E> {
     pub fn run(&mut self) {
         let list_ops = Mutex::new(Vec::new());
-        (&mut self.entities).par_iter_mut().enumerate().for_each(|(i, ent)| match ent.update() {
+        let delta = self.time.elapsed().as_micros() as f32 * 1000000.0;
+        self.time = Instant::now();
+        (&mut self.entities).par_iter_mut().enumerate().for_each(|(i, ent)| match ent.update(delta) {
             None => (),
             Some(ops) => {
                 let mut new_ops = Vec::new();
