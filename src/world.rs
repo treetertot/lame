@@ -12,10 +12,11 @@ pub struct World<S: 'static + Send + Sync + Sized, E: Entity<S>> {
 }
 impl<S: 'static + Send + Sync + Sized, E: Entity<S>> World<S, E> {
     pub fn run(&mut self) {
+        let shared = &self.shared;
         let list_ops = Mutex::new(Vec::new());
         let delta = self.time.elapsed().as_micros() as f32 * 1000000.0;
         self.time = Instant::now();
-        (&mut self.entities).par_iter_mut().enumerate().for_each(|(i, ent)| match ent.update(delta) {
+        (&mut self.entities).par_iter_mut().enumerate().for_each(|(i, ent)| match ent.update(shared, delta) {
             None => (),
             Some(ops) => {
                 let mut new_ops = Vec::new();
