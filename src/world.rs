@@ -11,6 +11,9 @@ pub struct World<S: 'static + Send + Sync + Sized, E: Entity<S>> {
     time: Instant,
 }
 impl<S: 'static + Send + Sync + Sized, E: Entity<S>> World<S, E> {
+    pub fn new(s: S) -> Self {
+        World { shared: s, entities: Vec::new(), time: Instant::now() }
+    }
     pub fn run(&mut self) {
         let shared = &self.shared;
         let list_ops = Mutex::new(Vec::new());
