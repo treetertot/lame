@@ -1,8 +1,9 @@
 [package]
 name = "lame"
-version = "0.2.0"
+version = "0.4.0"
 authors = ["treetertot <europajuice@gmail.com>"]
 edition = "2018"
 
 [dependencies]
-rayon = "*"
+crossbeam = "*"
+num_cpus = "1.10.1"
