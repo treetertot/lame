@@ -119,13 +119,13 @@ fn update<E: Entity>(world: Arc<World<E>>, entity_source: Receiver<E::Template>,
             }
             let mut to_remove = Vec::new();
             let delta = time.elapsed().as_micros() as f32 / 1000000.0;
+            time = Instant::now();
             for (i, entity) in entities.iter_mut().enumerate() {
                 match entity.update(&world, delta) {
                     Action::Draw(drawing) => frames.send(drawing).unwrap(),
                     Action::Kill => {to_remove.push(i); world.num_entities[me].store(world.num_entities[me].load() + 1)},
                 }
             }
-            time = Instant::now();
             if to_remove.len() != 0 {
                 let mut shifted = 0;
                 for n in to_remove {
