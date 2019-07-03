@@ -1,7 +1,7 @@
 use crate::entity::{Entity, Action};
 use std::sync::Arc;
 use crossbeam::atomic::AtomicCell;
-use crossbeam::channel::{Sender, Receiver, unbounded, bounded};
+use crossbeam::channel::{Sender, Receiver, unbounded, bounded, TryRecvError};
 use std::thread;
 use std::iter::Iterator;
 use std::time::Instant;
@@ -153,6 +153,19 @@ impl<'a, E: Entity> Iterator for DrawIter<'a, E> {
             return self.next();
         }
         self.left[self.current] -= 1;
-        Some(self.world.frames[self.current].recv().unwrap())
+        match self.world.frames[self.current].try_recv() {
+            Ok(yay) => return Some(yay),
+            Err(nay) => match nay {
+                TryRecvError::Empty => {
+                    if self.current == self.left.len() -1 {
+                        Some(self.world.frames[self.current].recv().unwrap())
+                    } else {
+                        self.left[self.current + 1] -= 1;
+                        Some(self.world.frames[self.current + 1].recv().unwrap())
+                    }
+                },
+                TryRecvError::Disconnected => panic!("channel disconnected somehow (all worker threads panic?)"),
+            },
+        }
     }
 }
