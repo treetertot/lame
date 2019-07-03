@@ -146,7 +146,7 @@ impl<'a, E: Entity> Iterator for DrawIter<'a, E> {
         let mut i = 0;
         loop {
             match self.world.frames[i].try_recv() {
-                Ok(val) => return Some(val),
+                Ok(val) => {println!("yee yee");return Some(val)},
                 _ => (),
             }
             i = (i + 1) % self.left.len();
