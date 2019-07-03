@@ -98,8 +98,8 @@ impl<E: Entity> World<E> {
     }
     pub fn iter_draws<'a>(&'a self) -> DrawIter<'a, E> {
         let mut left = Vec::with_capacity(self.num_entities.len());
-        for n in self.num_entities.iter() {
-            left.push(n.load());
+        for (i, n) in self.num_entities.iter().enumerate() {
+            left.push((i, n.load()));
         }
         DrawIter {
             world: self,
@@ -138,15 +138,21 @@ fn update<E: Entity>(world: Arc<World<E>>, entity_source: Receiver<E::Template>,
 
 pub struct DrawIter<'a, E: Entity> {
     world: &'a World<E>,
-    left: Vec<usize>,
+    left: Vec<(usize, usize)>,
 }
 impl<'a, E: Entity> Iterator for DrawIter<'a, E> {
     type Item = E::Drawer;
     fn next(&mut self) -> Option<Self::Item> {
         let mut i = 0;
         loop {
-            match self.world.frames[i].try_recv() {
-                Ok(val) => {println!("yee yee");return Some(val)},
+            match self.world.frames[self.left[i].0].try_recv() {
+                Ok(val) => {
+                    self.left[i].1 -= 1;
+                    if self.left[i].1 == 0 {
+                        self.left.remove(i);
+                    }
+                    return Some(val)
+                },
                 _ => (),
             }
             i = (i + 1) % self.left.len();
