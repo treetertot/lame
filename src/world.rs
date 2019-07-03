@@ -144,6 +144,9 @@ impl<'a, E: Entity> Iterator for DrawIter<'a, E> {
     type Item = E::Drawer;
     fn next(&mut self) -> Option<Self::Item> {
         let mut i = 0;
+        if self.left.len() == 0 {
+            return None;
+        }
         loop {
             match self.world.frames[self.left[i].0].try_recv() {
                 Ok(val) => {
