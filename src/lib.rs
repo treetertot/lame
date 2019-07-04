@@ -12,7 +12,6 @@ mod tests {
     struct TestEnt {}
     use crate::entity::{Entity, Action};
     use crate::world::World;
-    use std::sync::Arc;
     impl Entity for TestEnt {
         type Shared = ();
         type Template = ();
@@ -28,7 +27,8 @@ mod tests {
     }
     #[test]
     fn entity_test() {
-        let w: Arc<World<TestEnt>> = World::init((), vec![(), (), (), ()]);
+        use crate::world::LameHandle;
+        let w: LameHandle<TestEnt> = World::init((), vec![(), (), (), ()]);
         for _ in 0..4 {
             for (i, _) in w.iter_draws().enumerate() {
                 println!("drawing {}", i);
