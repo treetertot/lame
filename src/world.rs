@@ -6,7 +6,7 @@ use std::thread;
 use std::iter::Iterator;
 use std::time::Instant;
 use std::ops::{Drop, Deref};
-
+/// World is a (mostly) immutable type for communicating with threads
 pub struct World<E: Entity> {
     num_entities: Vec<AtomicCell<usize>>,
     channels: Vec<Sender<Option<E::Template>>>,
@@ -81,6 +81,8 @@ impl<E: Entity> World<E> {
     }
 }
 
+/// Essentially an owning handle for the world
+/// Destroys threads on drop
 pub struct LameHandle<E: Entity> {
     world: Arc<World<E>>,
 }
@@ -130,6 +132,7 @@ fn update<E: Entity>(world: Arc<World<E>>, entity_source: Receiver<Option<E::Tem
     });
 }
 
+/// Allows iterating through Drawers
 pub struct DrawIter<'a, E: Entity> {
     world: &'a World<E>,
     left: Vec<(usize, usize)>,
