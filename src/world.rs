@@ -1,6 +1,5 @@
 use crate::entity::{Entity, Action};
-use std::sync::Arc;
-use crossbeam::atomic::AtomicCell;
+use std::sync::{Arc, RwLock};
 use crossbeam::channel::{Sender, Receiver, unbounded, bounded};
 use std::thread;
 use std::iter::Iterator;
@@ -8,28 +7,30 @@ use std::time::Instant;
 use std::ops::{Drop, Deref};
 /// World is a (mostly) immutable type for communicating with threads
 pub struct World<E: Entity> {
-    num_entities: Vec<AtomicCell<usize>>,
+    num_entities: RwLock<Vec<usize>>,
     channels: Vec<Sender<Option<E::Template>>>,
     pub shared: E::Shared,
     frames: Vec<Receiver<E::Drawer>>,
 }
 impl<E: Entity> World<E> {
     pub fn add_entity(&self, template: E::Template) {
-        let mut smallest = (0usize, self.num_entities[0].load());
-        for i in 1..self.num_entities.len() {
-            let current = self.num_entities[i].load();
+        let mut num_entities = self.num_entities.write().unwrap();
+        let mut smallest = (0usize, num_entities[0]);
+        for i in 1..num_entities.len() {
+            let current = num_entities[i];
             if current < smallest.1 {
                 smallest = (i, current);
             }
         }
-        self.num_entities[smallest.0].store(smallest.1 + 1);
+        num_entities[smallest.0] = smallest.1 - 1;
         self.channels[smallest.0].send(Some(template)).unwrap();
     }
     #[inline]
     pub fn total_entities(&self) -> usize {
-        let mut sum = 0;
-        for n in self.num_entities.iter() {
-            sum += n.load();
+        let entities = self.num_entities.read().unwrap();
+        let mut sum = entities[0];
+        for n in entities.iter().skip(1) {
+            sum += n;
         }
         sum
     }
@@ -54,10 +55,7 @@ impl<E: Entity> World<E> {
             temp_entity_counters[dest] += 1;
             ch_senders[dest].send(Some(temp)).unwrap();
         }
-        let mut entity_counters = Vec::with_capacity(cpus);
-        for count in temp_entity_counters {
-            entity_counters.push(AtomicCell::new(count));
-        }
+        let entity_counters = RwLock::new(temp_entity_counters);
         let w = Arc::new(World{
             num_entities: entity_counters,
             channels: ch_senders,
@@ -70,9 +68,10 @@ impl<E: Entity> World<E> {
         LameHandle{world: w}
     }
     pub fn iter_draws<'a>(&'a self) -> DrawIter<'a, E> {
-        let mut left = Vec::with_capacity(self.num_entities.len());
-        for (i, n) in self.num_entities.iter().enumerate() {
-            left.push((i, n.load()));
+        let entities = self.num_entities.read().unwrap();
+        let mut left = Vec::with_capacity(entities.len());
+        for (i, n) in entities.iter().enumerate() {
+            left.push((i, *n));
         }
         DrawIter {
             world: self,
@@ -118,13 +117,13 @@ fn update<E: Entity>(world: Arc<World<E>>, entity_source: Receiver<Option<E::Tem
             for (i, entity) in entities.iter_mut().enumerate() {
                 match entity.update(&world, delta) {
                     Action::Draw(drawing) => frames.send(drawing).unwrap(),
-                    Action::Kill => {to_remove.push(i); world.num_entities[me].store(world.num_entities[me].load() + 1)},
+                    Action::Kill => {to_remove.push(i); world.num_entities.write().unwrap()[me] += 1;},
                 }
             }
             if to_remove.len() != 0 {
                 let mut shifted = 0;
                 for n in to_remove {
-                    entities.remove(n + shifted);
+                    entities.remove(n - shifted);
                     shifted += 1;
                 }
             }
@@ -140,22 +139,23 @@ pub struct DrawIter<'a, E: Entity> {
 impl<'a, E: Entity> Iterator for DrawIter<'a, E> {
     type Item = E::Drawer;
     fn next(&mut self) -> Option<Self::Item> {
-        let mut i = 0;
         if self.left.len() == 0 {
             return None;
         }
         loop {
-            match self.world.frames[self.left[i].0].try_recv() {
-                Ok(val) => {
-                    self.left[i].1 -= 1;
-                    if self.left[i].1 == 0 {
-                        self.left.remove(i);
-                    }
-                    return Some(val)
-                },
-                _ => (),
+            for (_, index) in self.left.iter() {
+                match self.world.frames[*index].try_recv() {
+                    Ok(val) => {
+                        let i = *index;
+                        self.left[i].1 -= 1;
+                        if self.left[i].1 == 0 {
+                            self.left.remove(i);
+                        }
+                        return Some(val)
+                    },
+                    _ => (),
+                }
             }
-            i = (i + 1) % self.left.len();
         }
     }
 }
