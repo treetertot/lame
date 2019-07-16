@@ -5,7 +5,7 @@ use std::thread;
 use std::iter::Iterator;
 use std::time::Instant;
 use std::ops::{Drop, Deref};
-/// World is a (mostly) immutable type for communicating with threads
+/// World is a type for communicating with threads
 pub struct World<E: Entity> {
     num_entities: RwLock<Vec<usize>>,
     channels: Vec<Sender<Option<E::Template>>>,
