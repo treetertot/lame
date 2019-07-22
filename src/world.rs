@@ -139,23 +139,22 @@ pub struct DrawIter<'a, E: Entity> {
 impl<'a, E: Entity> Iterator for DrawIter<'a, E> {
     type Item = E::Drawer;
     fn next(&mut self) -> Option<Self::Item> {
+        let mut i = 0;
         if self.left.len() == 0 {
             return None;
         }
         loop {
-            for (_, index) in self.left.iter() {
-                match self.world.frames[*index].try_recv() {
-                    Ok(val) => {
-                        let i = *index;
-                        self.left[i].1 -= 1;
-                        if self.left[i].1 == 0 {
-                            self.left.remove(i);
-                        }
-                        return Some(val)
-                    },
-                    _ => (),
-                }
+            match self.world.frames[self.left[i].0].try_recv() {
+                Ok(val) => {
+                    self.left[i].1 -= 1;
+                    if self.left[i].1 == 0 {
+                        self.left.remove(i);
+                    }
+                    return Some(val)
+                },
+                _ => (),
             }
+            i = (i + 1) % self.left.len();
         }
     }
 }

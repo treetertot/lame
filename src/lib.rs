@@ -34,12 +34,6 @@ pub mod world;
 
 #[cfg(test)]
 mod tests {
-    #[test]
-    fn atomic_check() {
-        use crossbeam::atomic::AtomicCell;
-        assert_eq!(AtomicCell::<bool>::is_lock_free(), false)
-    }
-
     struct TestEnt {}
     use crate::entity::{Entity, Action};
     use crate::world::World;
