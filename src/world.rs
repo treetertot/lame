@@ -106,7 +106,7 @@ fn update<E: Entity>(world: Arc<World<E>>, entity_source: Receiver<Option<E::Tem
         loop {
             for temp in entity_source.try_iter() {
                 if let Some(temp) = temp {
-                    entities.push(E::construct(&temp, &world));
+                    entities.push(E::construct(temp, &world));
                 } else {
                     break;
                 }
