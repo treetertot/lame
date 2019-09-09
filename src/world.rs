@@ -37,10 +37,10 @@ impl<E: Entity> World<E> {
     pub fn init(s: E::Shared, starters: Vec<E::Template>) -> LameHandle<E> {
         let cpus = num_cpus::get();
         let mut temp_entity_counters = Vec::with_capacity(cpus);
-        let mut ch_recievers: Vec<Receiver<Option<E::Template>>> = Vec::new();
-        let mut ch_senders: Vec<Sender<Option<E::Template>>> = Vec::new();
-        let mut f_senders: Vec<Sender<E::Drawer>> = Vec::new();
-        let mut f_recievers: Vec<Receiver<E::Drawer>> = Vec::new();
+        let mut ch_recievers: Vec<Receiver<Option<E::Template>>> = Vec::with_capacity(cpus);
+        let mut ch_senders: Vec<Sender<Option<E::Template>>> = Vec::with_capacity(cpus);
+        let mut f_senders: Vec<Sender<E::Drawer>> = Vec::with_capacity(cpus);
+        let mut f_recievers: Vec<Receiver<E::Drawer>> = Vec::with_capacity(cpus);
         for _ in 0..cpus {
             temp_entity_counters.push(0usize);
             let (s, r) = unbounded();
@@ -64,6 +64,35 @@ impl<E: Entity> World<E> {
         });
         for i in 0..cpus {
             update(w.clone(), ch_recievers.pop().unwrap(), f_senders.pop().unwrap(), i);
+        }
+        LameHandle{world: w}
+    }
+    pub fn new(s: E::Shared) -> LameHandle<E> {
+        let cpus = num_cpus::get();
+        let mut ch_recievers: Vec<Receiver<Option<E::Template>>> = Vec::with_capacity(cpus);
+        let mut ch_senders: Vec<Sender<Option<E::Template>>> = Vec::with_capacity(cpus);
+        let mut f_senders: Vec<Sender<E::Drawer>> = Vec::with_capacity(cpus);
+        let mut f_recievers: Vec<Receiver<E::Drawer>> = Vec::with_capacity(cpus);
+        for _ in 0..cpus {
+            let (s, r) = unbounded();
+            ch_recievers.push(r);
+            ch_senders.push(s);
+            let (s, r) = unbounded();
+            f_recievers.push(r);
+            f_senders.push(s);
+        }
+        let mut count = Vec::with_capacity(cpus);
+        for _ in 0..cpus {
+            count.push(0);
+        }
+        let w = Arc::new(World {
+            num_entities: RwLock::new(count),
+            channels: ch_senders,
+            shared: s,
+            frames: f_recievers,
+        });
+        for i in 0..cpus {
+            update_unbounded(w.clone(), ch_recievers.pop().unwrap(), f_senders.pop().unwrap(), i);
         }
         LameHandle{world: w}
     }
@@ -131,6 +160,39 @@ fn update<E: Entity>(world: Arc<World<E>>, entity_source: Receiver<Option<E::Tem
     });
 }
 
+fn update_unbounded<E: Entity>(world: Arc<World<E>>, entity_source: Receiver<Option<E::Template>>, frames: Sender<E::Drawer>, me: usize) {
+    thread::spawn(move || {
+        let mut entities = Vec::new();
+        let mut time = Instant::now();
+        loop {
+            for temp in entity_source.try_iter() {
+                if let Some(temp) = temp {
+                    entities.push(E::construct(temp, &world));
+                } else {
+                    break;
+                }
+            }
+            while frames.len() > entities.len() {}
+            let mut to_remove = Vec::new();
+            let delta = time.elapsed().as_micros() as f32 / 1000000.0;
+            time = Instant::now();
+            for (i, entity) in entities.iter_mut().enumerate() {
+                match entity.update(&world, delta) {
+                    Action::Draw(drawing) => frames.send(drawing).unwrap(),
+                    Action::Kill => {to_remove.push(i); world.num_entities.write().unwrap()[me] += 1;},
+                }
+            }
+            if to_remove.len() != 0 {
+                let mut shifted = 0;
+                for n in to_remove {
+                    entities.remove(n - shifted);
+                    shifted += 1;
+                }
+            }
+        }
+    });
+}
+
 /// Allows iterating through Drawers
 pub struct DrawIter<'a, E: Entity> {
     world: &'a World<E>,
@@ -156,5 +218,12 @@ impl<'a, E: Entity> Iterator for DrawIter<'a, E> {
             }
             i = (i + 1) % self.left.len();
         }
+    }
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let mut sum = 0;
+        for &(_, n) in &self.left {
+            sum += n;
+        }
+        (sum, Some(sum))
     }
 }
