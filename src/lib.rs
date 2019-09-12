@@ -1,10 +1,10 @@
 //! # Example
-//! 
+//!
 //! ```
 //!use crate::entity::{Entity, Action};
 //!use crate::world::World;
 //!use crate::world::LameHandle;
-//! 
+//!
 //!struct TestEnt {}
 //!impl Entity for TestEnt {
 //!    type Shared = ();
@@ -28,14 +28,14 @@
 //!}
 //! ```
 
-use std::sync::{RwLock, Arc};
-use crossbeam_channel::{self as channel, Sender, Receiver};
+use crossbeam_channel::{self as channel, Receiver, Sender, TryRecvError};
+use std::mem;
+use std::sync::{Arc, RwLock};
 use std::thread;
 use std::time::Instant;
-use std::mem;
 
 pub mod entity;
-use entity::{Entity, Action};
+use entity::{Action, Entity};
 
 struct Controller<E: Entity> {
     counters: Vec<usize>,
@@ -47,7 +47,8 @@ struct Controller<E: Entity> {
 }
 impl<E: Entity> Controller<E> {
     fn recalibrate(&mut self) {
-        let (mut frame_outputs, mut frame_receivers) = self.counters.iter().map(|&n| {channel::bounded(n)}).unzip();
+        let (mut frame_outputs, mut frame_receivers) =
+            self.counters.iter().map(|&n| channel::bounded(n)).unzip();
         mem::swap(&mut self.frame_outputs, &mut frame_outputs);
         mem::swap(&mut self.frame_receivers, &mut frame_receivers);
         mem::drop(frame_outputs);
@@ -65,7 +66,7 @@ pub struct LameWorld<E: Entity> {
 }
 impl<E: Entity> LameWorld<E> {
     fn secret_clone(&self) -> Self {
-        LameWorld{
+        LameWorld {
             controller: self.controller.clone(),
             shared: self.shared.clone(),
         }
@@ -81,8 +82,9 @@ impl<E: Entity> LameWorld<E> {
         Self::new_cpus(shared, 8)
     }
     pub fn new_cpus(shared: E::Shared, threads: usize) -> LameWorld<E> {
-        let (frame_outputs, frame_receivers) = (0..threads).map(|_n| {channel::bounded(20)}).unzip();
-        let (entity_senders, entity_receivers) = (0..threads).map(|_n| {channel::bounded(20)}).unzip();
+        let (frame_outputs, frame_receivers) = (0..threads).map(|_n| channel::bounded(20)).unzip();
+        let (entity_senders, entity_receivers) =
+            (0..threads).map(|_n| channel::bounded(20)).unzip();
         let world = LameWorld {
             controller: Arc::new(RwLock::new(Controller {
                 counters: (0..threads).map(|_| 0).collect(),
@@ -106,22 +108,47 @@ impl<E: Entity> LameWorld<E> {
         let controller = self.controller.clone();
         thread::spawn(move || {
             let mut writer = controller.write().unwrap();
-            let (mindex, _) = writer.counters.iter().enumerate().min_by_key(|(_i, &val)| {val}).unwrap();
+            let (mindex, _) = writer
+                .counters
+                .iter()
+                .enumerate()
+                .min_by_key(|(_i, &val)| val)
+                .unwrap();
             writer.counters[mindex] += 1;
             writer.entity_senders[mindex].send(entity).unwrap();
         });
     }
-    pub fn add_entities<C: IntoIterator<Item=E::Template> + Send + 'static>(&self, entities: C) {
+    pub fn add_entities<C: IntoIterator<Item = E::Template> + Send + 'static>(&self, entities: C) {
         let controller = self.controller.clone();
         thread::spawn(move || {
             let mut writer = controller.write().unwrap();
             for entity in entities {
-                let (mindex, _) = writer.counters.iter().enumerate().min_by_key(|(_i, &val)| {val}).unwrap();
+                let (mindex, _) = writer
+                    .counters
+                    .iter()
+                    .enumerate()
+                    .min_by_key(|(_i, &val)| val)
+                    .unwrap();
                 writer.counters[mindex] += 1;
                 writer.entity_senders[mindex].send(entity).unwrap();
             }
             writer.recalibrate();
         });
+    }
+    pub fn iter_draws(&self) -> Draws<E> {
+        Draws {
+            right: self
+                .controller
+                .read()
+                .unwrap()
+                .counters
+                .iter()
+                .enumerate()
+                .map(|(i, count)| (i, *count))
+                .collect(),
+            left: Vec::new(),
+            control: self.controller.clone(),
+        }
     }
 }
 impl<E: Entity> std::ops::Drop for LameWorld<E> {
@@ -160,5 +187,44 @@ fn update<E: Entity>(world: LameWorld<E>, index: usize) {
         if world.controller.read().unwrap().dropped {
             break;
         }
+    }
+}
+
+pub struct Draws<E: Entity> {
+    left: Vec<(usize, usize)>,
+    control: Arc<RwLock<Controller<E>>>,
+    right: Vec<(usize, usize)>,
+}
+impl<E: Entity> Iterator for Draws<E> {
+    type Item = E::Drawer;
+
+    fn next(&mut self) -> Option<E::Drawer> {
+        //note: yes, I can do this better and realize that left is just a waste of memory, but I'm lazy and method chaining is fun
+        self.right
+            .extend(self.left.iter().map(|&pair| pair).filter(|(_, n)| *n == 0));
+        std::mem::swap(&mut self.left, &mut self.right);
+        self.right.clear();
+
+        if self.left.len() > 0 {
+            loop {
+                let reader = self.control.read().unwrap();
+                for (index, count) in &mut self.left {
+                    match reader.frame_receivers[*index].try_recv() {
+                        Ok(res) => {
+                            *count -= 1;
+                            return Some(res);
+                        }
+                        Err(TryRecvError::Empty) => (),
+                        _ => panic!("I think a thread crashed or something"),
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let sum = self.right.iter().map(|(_, n)| n).sum();
+        (sum, Some(sum))
     }
 }
