@@ -16,11 +16,11 @@ pub trait Entity: Sized + 'static {
 
     /// Updates the Entity.
     /// Has a world, so it can create more entities or access the shared resource, and delta time in seconds as f32
-    fn update(&mut self, world: &World<Self>, delta: f32) -> Action<Self>;
+    fn update(&mut self, world: &World<Self>, delta: f32) -> Action<Self::Drawer>;
 }
 /// Since lame entities don't know where another entity is, entities have to handle their own destruction
 /// The Action type lets an enemy draw or kill itself, becaus lame expects all living entities to draw
-pub enum Action<E: Entity> {
-    Draw(E::Drawer),
+pub enum Action<T> {
+    Draw(T),
     Kill,
 }

@@ -28,14 +28,13 @@
 //!}
 //! ```
 
-
 pub mod entity;
 pub mod world;
 
 #[cfg(test)]
 mod tests {
     struct TestEnt {}
-    use crate::entity::{Entity, Action};
+    use crate::entity::{Action, Entity};
     use crate::world::World;
     impl Entity for TestEnt {
         type Shared = ();
@@ -43,9 +42,9 @@ mod tests {
         type Drawer = ();
 
         fn construct(_template: Self::Template, _world: &World<Self>) -> Self {
-            TestEnt{}
+            TestEnt {}
         }
-        fn update(&mut self, _world: &World<Self>, _delta: f32) -> Action<Self> {
+        fn update(&mut self, _world: &World<Self>, _delta: f32) -> Action<Self::Drawer> {
             println!("updating");
             Action::Draw(())
         }

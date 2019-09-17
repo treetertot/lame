@@ -1,10 +1,10 @@
-use crate::entity::{Entity, Action};
-use std::sync::{Arc, RwLock};
-use crossbeam_channel::{Sender, Receiver, unbounded, bounded};
-use std::thread;
+use crate::entity::{Action, Entity};
+use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
 use std::iter::Iterator;
+use std::ops::{Deref, Drop};
+use std::sync::{Arc, RwLock};
+use std::thread;
 use std::time::Instant;
-use std::ops::{Drop, Deref};
 /// World is a type for communicating with threads
 pub struct World<E: Entity> {
     num_entities: RwLock<Vec<usize>>,
@@ -46,7 +46,7 @@ impl<E: Entity> World<E> {
             let (s, r) = unbounded();
             ch_recievers.push(r);
             ch_senders.push(s);
-            let (s, r) = bounded(starters.len()/4);
+            let (s, r) = bounded(starters.len() / 4);
             f_recievers.push(r);
             f_senders.push(s);
         }
@@ -56,16 +56,21 @@ impl<E: Entity> World<E> {
             ch_senders[dest].send(Some(temp)).unwrap();
         }
         let entity_counters = RwLock::new(temp_entity_counters);
-        let w = Arc::new(World{
+        let w = Arc::new(World {
             num_entities: entity_counters,
             channels: ch_senders,
             shared: s,
             frames: f_recievers,
         });
         for i in 0..cpus {
-            update(w.clone(), ch_recievers.pop().unwrap(), f_senders.pop().unwrap(), i);
+            update(
+                w.clone(),
+                ch_recievers.pop().unwrap(),
+                f_senders.pop().unwrap(),
+                i,
+            );
         }
-        LameHandle{world: w}
+        LameHandle { world: w }
     }
     pub fn iter_draws<'a>(&'a self) -> DrawIter<'a, E> {
         let entities = self.num_entities.read().unwrap();
@@ -99,7 +104,12 @@ impl<E: Entity> Drop for LameHandle<E> {
     }
 }
 
-fn update<E: Entity>(world: Arc<World<E>>, entity_source: Receiver<Option<E::Template>>, frames: Sender<E::Drawer>, me: usize) {
+fn update<E: Entity>(
+    world: Arc<World<E>>,
+    entity_source: Receiver<Option<E::Template>>,
+    frames: Sender<E::Drawer>,
+    me: usize,
+) {
     thread::spawn(move || {
         let mut entities = Vec::new();
         let mut time = Instant::now();
@@ -117,7 +127,10 @@ fn update<E: Entity>(world: Arc<World<E>>, entity_source: Receiver<Option<E::Tem
             for (i, entity) in entities.iter_mut().enumerate() {
                 match entity.update(&world, delta) {
                     Action::Draw(drawing) => frames.send(drawing).unwrap(),
-                    Action::Kill => {to_remove.push(i); world.num_entities.write().unwrap()[me] += 1;},
+                    Action::Kill => {
+                        to_remove.push(i);
+                        world.num_entities.write().unwrap()[me] += 1;
+                    }
                 }
             }
             if to_remove.len() != 0 {
@@ -150,8 +163,8 @@ impl<'a, E: Entity> Iterator for DrawIter<'a, E> {
                     if self.left[i].1 == 0 {
                         self.left.remove(i);
                     }
-                    return Some(val)
-                },
+                    return Some(val);
+                }
                 _ => (),
             }
             i = (i + 1) % self.left.len();
