@@ -169,3 +169,13 @@ impl<'a, E: Entity> Iterator for DrawIter<'a, E> {
         }
     }
 }
+
+pub struct FrozenWorld<E: Entity> {
+    pub shared: E::Shared,
+    pub templates: Vec<E::Template>
+}
+impl<E: Entity> FrozenWorld<E> {
+    pub fn start(self) -> LameHandle<E> {
+        World::init(self.shared, self.templates)
+    }
+}
