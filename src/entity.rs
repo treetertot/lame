@@ -12,7 +12,7 @@ pub trait Entity: Sized + 'static {
     type Drawer: Send + 'static;
 
     /// Constructs the Entity from a template and world (for access to the shared resource)
-    fn construct(template: Self::Template, world: &World<Self>) -> Self;
+    fn construct(template: Self::Template, world: &Self::Shared) -> Self;
 
     /// Updates the Entity.
     /// Has a world, so it can create more entities or access the shared resource, and delta time in seconds as f32

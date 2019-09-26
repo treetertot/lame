@@ -41,7 +41,7 @@ mod tests {
         type Template = ();
         type Drawer = ();
 
-        fn construct(_template: Self::Template, _world: &World<Self>) -> Self {
+        fn construct(_template: Self::Template, _world: &Self::Shared) -> Self {
             TestEnt {}
         }
         fn update(&mut self, _world: &World<Self>, _delta: f32) -> Action<Self::Drawer> {

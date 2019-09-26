@@ -53,7 +53,7 @@ impl<E: Entity> World<E> {
         for (i, temp) in starters.into_iter().enumerate() {
             let dest = i % cpus;
             temp_entity_counters[dest] += 1;
-            ch_senders[dest].send(Some(temp)).unwrap();
+            ch_senders[dest].send(Some(temp)).expect("failed to send template");
         }
         let entity_counters = RwLock::new(temp_entity_counters);
         let w = Arc::new(World {
@@ -110,13 +110,13 @@ fn update<E: Entity>(
     frames: Sender<E::Drawer>,
     me: usize,
 ) {
-    thread::spawn(move || {
+    thread::Builder::new().name(String::from("eggs")).spawn(move || {
         let mut entities = Vec::new();
         let mut time = Instant::now();
         loop {
             for temp in entity_source.try_iter() {
                 if let Some(temp) = temp {
-                    entities.push(E::construct(temp, &world));
+                    entities.push(E::construct(temp, &world.shared));
                 } else {
                     break;
                 }
@@ -126,10 +126,10 @@ fn update<E: Entity>(
             time = Instant::now();
             for (i, entity) in entities.iter_mut().enumerate() {
                 match entity.update(&world, delta) {
-                    Action::Draw(drawing) => frames.send(drawing).unwrap(),
+                    Action::Draw(drawing) => frames.send(drawing).expect("failed to send sprite"),
                     Action::Kill => {
                         to_remove.push(i);
-                        world.num_entities.write().unwrap()[me] += 1;
+                        world.num_entities.write().expect("failed to unlock rwlock and record kill")[me] += 1;
                     }
                 }
             }
@@ -141,7 +141,7 @@ fn update<E: Entity>(
                 }
             }
         }
-    });
+    }).unwrap();
 }
 
 /// Allows iterating through Drawers
@@ -152,6 +152,7 @@ pub struct DrawIter<'a, E: Entity> {
 impl<'a, E: Entity> Iterator for DrawIter<'a, E> {
     type Item = E::Drawer;
     fn next(&mut self) -> Option<Self::Item> {
+        self.left.retain(|&(_index, count)| count != 0);
         let mut i = 0;
         if self.left.len() == 0 {
             return None;
@@ -160,9 +161,6 @@ impl<'a, E: Entity> Iterator for DrawIter<'a, E> {
             match self.world.frames[self.left[i].0].try_recv() {
                 Ok(val) => {
                     self.left[i].1 -= 1;
-                    if self.left[i].1 == 0 {
-                        self.left.remove(i);
-                    }
                     return Some(val);
                 }
                 _ => (),
