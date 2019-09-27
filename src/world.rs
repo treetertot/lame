@@ -2,7 +2,7 @@ use crate::entity::{Action, Entity};
 use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
 use std::iter::Iterator;
 use std::ops::{Deref, Drop};
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, RwLock, Weak};
 use std::thread;
 use std::time::Instant;
 /// World is a type for communicating with threads
@@ -101,6 +101,14 @@ impl<E: Entity> Drop for LameHandle<E> {
         for ch in self.channels.iter() {
             ch.send(None).unwrap()
         }
+    }
+}
+impl<E: Entity> LameHandle<E> {
+    pub fn get_arc(&self) -> Arc<World<E>> {
+        self.world.clone()
+    }
+    pub fn get_weak(&self) -> Weak<World<E>> {
+        Arc::downgrade(&self.world)
     }
 }
 
