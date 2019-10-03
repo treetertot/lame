@@ -1,16 +1,22 @@
 use crate::entity::{Action, Entity};
-use crossbeam_channel::{bounded, unbounded, Receiver, Sender};
-use std::iter::Iterator;
-use std::ops::{Deref, Drop};
-use std::sync::{Arc, RwLock, Weak};
+use crossbeam_channel::{bounded, Receiver, Sender};
+use std::collections::BinaryHeap;
+use std::iter;
+use std::mem;
+use std::ops::Deref;
+use std::sync::{Arc, RwLock};
 use std::thread;
 use std::time::Instant;
-/// World is a type for communicating with threads
+
+mod capsule;
+use capsule::Capsule;
+
 pub struct World<E: Entity> {
     num_entities: RwLock<Vec<usize>>,
-    channels: Vec<Sender<Option<E::Template>>>,
+    channels: Vec<Sender<E::Template>>,
     pub shared: E::Shared,
-    frames: Vec<Receiver<E::Drawer>>,
+    frames: Vec<Receiver<Capsule<E::Drawer>>>,
+    kill: RwLock<bool>,
 }
 impl<E: Entity> World<E> {
     pub fn add_entity(&self, template: E::Template) {
@@ -23,121 +29,57 @@ impl<E: Entity> World<E> {
             }
         }
         num_entities[smallest.0] = smallest.1 - 1;
-        self.channels[smallest.0].send(Some(template)).unwrap();
+        self.channels[smallest.0].send(template).unwrap();
     }
-    #[inline]
-    pub fn total_entities(&self) -> usize {
-        let entities = self.num_entities.read().unwrap();
-        let mut sum = entities[0];
-        for n in entities.iter().skip(1) {
-            sum += n;
-        }
-        sum
-    }
-    pub fn init(s: E::Shared, starters: Vec<E::Template>) -> LameHandle<E> {
-        let cpus = num_cpus::get();
-        let mut temp_entity_counters = Vec::with_capacity(cpus);
-        let mut ch_recievers: Vec<Receiver<Option<E::Template>>> = Vec::new();
-        let mut ch_senders: Vec<Sender<Option<E::Template>>> = Vec::new();
-        let mut f_senders: Vec<Sender<E::Drawer>> = Vec::new();
-        let mut f_recievers: Vec<Receiver<E::Drawer>> = Vec::new();
-        for _ in 0..cpus {
-            temp_entity_counters.push(0usize);
-            let (s, r) = unbounded();
-            ch_recievers.push(r);
-            ch_senders.push(s);
-            let (s, r) = bounded(starters.len() / 4);
-            f_recievers.push(r);
-            f_senders.push(s);
-        }
-        for (i, temp) in starters.into_iter().enumerate() {
-            let dest = i % cpus;
-            temp_entity_counters[dest] += 1;
-            ch_senders[dest].send(Some(temp)).expect("failed to send template");
-        }
-        let entity_counters = RwLock::new(temp_entity_counters);
-        let w = Arc::new(World {
-            num_entities: entity_counters,
-            channels: ch_senders,
-            shared: s,
-            frames: f_recievers,
-        });
-        for i in 0..cpus {
-            update(
-                w.clone(),
-                ch_recievers.pop().unwrap(),
-                f_senders.pop().unwrap(),
-                i,
-            );
-        }
-        LameHandle { world: w }
-    }
-    pub fn iter_draws<'a>(&'a self) -> DrawIter<'a, E> {
+    fn drain<'a>(&'a self) -> DrainIter<'a, E> {
         let entities = self.num_entities.read().unwrap();
         let mut left = Vec::with_capacity(entities.len());
         for (i, n) in entities.iter().enumerate() {
             left.push((i, *n));
         }
-        DrawIter {
+        DrainIter {
             world: self,
             left: left,
         }
     }
-}
-
-/// Essentially an owning handle for the world
-/// Destroys threads on drop
-pub struct LameHandle<E: Entity> {
-    world: Arc<World<E>>,
-}
-impl<E: Entity> Deref for LameHandle<E> {
-    type Target = World<E>;
-    fn deref(&self) -> &World<E> {
-        &self.world
+    pub fn iter_draws(&self) -> DrawIter<E::Drawer> {
+        let mut heap = BinaryHeap::new();
+        heap.extend(self.drain());
+        DrawIter(heap)
     }
 }
-impl<E: Entity> Drop for LameHandle<E> {
-    fn drop(&mut self) {
-        for ch in self.channels.iter() {
-            ch.send(None).unwrap()
-        }
-    }
-}
-impl<E: Entity> LameHandle<E> {
-    pub fn get_arc(&self) -> Arc<World<E>> {
-        self.world.clone()
-    }
-    pub fn get_weak(&self) -> Weak<World<E>> {
-        Arc::downgrade(&self.world)
-    }
-}
-
 fn update<E: Entity>(
     world: Arc<World<E>>,
-    entity_source: Receiver<Option<E::Template>>,
-    frames: Sender<E::Drawer>,
-    me: usize,
+    index: usize,
+    entities_in: Receiver<E::Template>,
+    frames: Sender<Capsule<E::Drawer>>,
 ) {
-    thread::Builder::new().name(String::from("eggs")).spawn(move || {
+    thread::spawn(move || {
         let mut entities = Vec::new();
         let mut time = Instant::now();
-        loop {
-            for temp in entity_source.try_iter() {
-                if let Some(temp) = temp {
-                    entities.push(E::construct(temp, &world.shared));
-                } else {
-                    break;
-                }
+        while !*world.kill.read().unwrap() {
+            for template in entities_in.try_iter() {
+                entities.push(E::construct(template, &world.shared));
             }
             let mut to_remove = Vec::new();
-            let delta = time.elapsed().as_micros() as f32 / 1000000.0;
-            time = Instant::now();
+            let delta = mem::replace(&mut time, Instant::now())
+                .elapsed()
+                .as_micros() as f32
+                / 1000000.0;
             for (i, entity) in entities.iter_mut().enumerate() {
                 match entity.update(&world, delta) {
-                    Action::Draw(drawing) => frames.send(drawing).expect("failed to send sprite"),
+                    Action::Draw(layer, drawing) => frames
+                        .send(Capsule {
+                            layer: layer,
+                            data: drawing,
+                        })
+                        .expect("failed to send sprite"),
                     Action::Kill => {
                         to_remove.push(i);
-                        world.num_entities.write().expect("failed to unlock rwlock and record kill")[me] += 1;
+                        world
+                            .num_entities
+                            .write()
+                            .expect("failed to unlock rwlock and record kill")[index] -= 1;
                     }
                 }
             }
@@ -149,16 +91,71 @@ fn update<E: Entity>(
                 }
             }
         }
-    }).unwrap();
+    });
+}
+
+pub fn init<E: Entity>(
+    mut start_list: Vec<E::Template>,
+    num_threads: usize,
+    shared: E::Shared,
+) -> WorldHandle<E> {
+    let last = start_list.len() - ((start_list.len() / num_threads) * (num_threads - 1));
+    //Yes, this line is stupid. I just wanted to see if I could do it without making a mutable variable.
+    let temp_counters: Vec<_> = (0..num_threads - 1)
+        .map(|_n| start_list.len() / num_threads)
+        .chain(iter::once(last))
+        .collect();
+    let (esenders, ereceivers): (Vec<_>, Vec<_>) =
+        temp_counters.iter().map(|&n| bounded(n)).unzip();
+    let (fsenders, freceivers): (Vec<_>, Vec<_>) =
+        temp_counters.iter().map(|&n| bounded(n)).unzip();
+
+    for (&count, sender) in temp_counters.iter().zip(esenders.iter()) {
+        for _ in 0..count {
+            sender.send(start_list.pop().unwrap()).unwrap();
+        }
+    }
+
+    let w = Arc::new(World {
+        num_entities: RwLock::new(temp_counters),
+        channels: esenders,
+        frames: freceivers,
+        shared: shared,
+        kill: RwLock::new(false),
+    });
+
+    for (i, (receiver, frameout)) in ereceivers.into_iter().zip(fsenders).enumerate() {
+        update(w.clone(), i, receiver, frameout)
+    }
+
+    WorldHandle(w)
+}
+
+pub struct WorldHandle<E: Entity>(Arc<World<E>>);
+impl<E: Entity> Drop for WorldHandle<E> {
+    fn drop(&mut self) {
+        *self.0.kill.write().unwrap() = true;
+    }
+}
+impl<E: Entity> Deref for WorldHandle<E> {
+    type Target = World<E>;
+    fn deref(&self) -> &World<E> {
+        &self.0
+    }
+}
+impl<E: Entity> WorldHandle<E> {
+    pub fn get_arc(&self) -> Arc<World<E>> {
+        self.0.clone()
+    }
 }
 
 /// Allows iterating through Drawers
-pub struct DrawIter<'a, E: Entity> {
+struct DrainIter<'a, E: Entity> {
     world: &'a World<E>,
     left: Vec<(usize, usize)>,
 }
-impl<'a, E: Entity> Iterator for DrawIter<'a, E> {
-    type Item = E::Drawer;
+impl<'a, E: Entity> Iterator for DrainIter<'a, E> {
+    type Item = Capsule<E::Drawer>;
     fn next(&mut self) -> Option<Self::Item> {
         self.left.retain(|&(_index, count)| count != 0);
         let mut i = 0;
@@ -176,14 +173,28 @@ impl<'a, E: Entity> Iterator for DrawIter<'a, E> {
             i = (i + 1) % self.left.len();
         }
     }
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        let remaining = self.left.iter().fold(0, |last, (_, count)| last + count);
+        (remaining, Some(remaining))
+    }
+}
+impl<'a, E: Entity> ExactSizeIterator for DrainIter<'a, E> {}
+
+pub struct DrawIter<T>(BinaryHeap<Capsule<T>>);
+impl<T> Iterator for DrawIter<T> {
+    type Item = T;
+    fn next(&mut self) -> Option<T> {
+        Some(self.0.pop()?.data)
+    }
 }
 
-pub struct FrozenWorld<E: Entity> {
+pub struct Frozen<E: Entity> {
+    pub threads: usize,
+    pub templates: Vec<E::Template>,
     pub shared: E::Shared,
-    pub templates: Vec<E::Template>
 }
-impl<E: Entity> FrozenWorld<E> {
-    pub fn start(self) -> LameHandle<E> {
-        World::init(self.shared, self.templates)
+impl<E: Entity> Frozen<E> {
+    pub fn start(self) -> WorldHandle<E> {
+        init(self.templates, self.threads, self.shared)
     }
 }

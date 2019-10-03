@@ -1,9 +1,8 @@
 [package]
 name = "lame"
-version = "0.5.0"
+version = "0.6.0"
 authors = ["treetertot <europajuice@gmail.com>"]
 edition = "2018"
 
 [dependencies]
 crossbeam-channel = "*"
-num_cpus = "*"

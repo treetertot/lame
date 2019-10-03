@@ -21,6 +21,6 @@ pub trait Entity: Sized + 'static {
 /// Since lame entities don't know where another entity is, entities have to handle their own destruction
 /// The Action type lets an enemy draw or kill itself, becaus lame expects all living entities to draw
 pub enum Action<T> {
-    Draw(T),
+    Draw(u8, T),
     Kill,
 }

@@ -46,15 +46,15 @@ mod tests {
         }
         fn update(&mut self, _world: &World<Self>, _delta: f32) -> Action<Self::Drawer> {
             println!("updating");
-            Action::Draw(())
+            Action::Draw(4, ())
         }
     }
     #[test]
     fn entity_test() {
-        use crate::world::LameHandle;
-        let w: LameHandle<TestEnt> = World::init((), vec![(), (), (), ()]);
+        use crate::world::{self, WorldHandle};
+        let w: WorldHandle<TestEnt> = world::init(vec![(), (), (), ()], 8, ());
         for _ in 0..4 {
-            for (i, _) in w.iter_draws().enumerate() {
+            for (i, _) in w.iter_draws().into_iter().enumerate() {
                 println!("drawing {}", i);
             }
             println!("batch finished");
