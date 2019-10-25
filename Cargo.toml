@@ -1,8 +1,11 @@
 [package]
 name = "lame"
-version = "0.6.0"
+version = "0.7.0"
 authors = ["treetertot <europajuice@gmail.com>"]
 edition = "2018"
 
 [dependencies]
 crossbeam-channel = "*"
+parking_lot = "*"
+lazy_static = "*"
+num_cpus = "*"

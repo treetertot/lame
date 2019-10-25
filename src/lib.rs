@@ -11,17 +11,17 @@
 //!    type Template = ();
 //!    type Drawer = ();
 //!
-//!    fn construct(_template: &Self::Template, _world: &World<Self>) -> Self {
+//!    fn construct(_template: Self::Template, _world: &Self::Shared) -> Self {
 //!        TestEnt{}
 //!    }
-//!    fn update(&mut self, _world: &World<Self>, _delta: f32) -> Action<Self> {
+//!    fn update(&mut self, _world: &WeakWorld<Self>, _delta: f32) -> Action<Self> {
 //!        println!("updating");
 //!        Action::Draw(())
 //!    }
 //!}
 //!let w: LameHandle<TestEnt> = World::init((), vec![(), (), (), ()]);
 //!for _ in 0..4 {
-//!    for (i, _) in w.iter_draws().enumerate() {
+//!    for (i, _) in w.draws().enumerate() {
 //!        println!("drawing {}", i);
 //!    }
 //!    println!("batch finished");
@@ -35,7 +35,7 @@ pub mod world;
 mod tests {
     struct TestEnt {}
     use crate::entity::{Action, Entity};
-    use crate::world::World;
+    use crate::world::{World, WeakWorld};
     impl Entity for TestEnt {
         type Shared = ();
         type Template = ();
@@ -44,17 +44,16 @@ mod tests {
         fn construct(_template: Self::Template, _world: &Self::Shared) -> Self {
             TestEnt {}
         }
-        fn update(&mut self, _world: &World<Self>, _delta: f32) -> Action<Self::Drawer> {
+        fn update(&mut self, _world: &WeakWorld<Self>, _delta: f32) -> Action<Self::Drawer> {
             println!("updating");
             Action::Draw(4, ())
         }
     }
     #[test]
     fn entity_test() {
-        use crate::world::{self, WorldHandle};
-        let w: WorldHandle<TestEnt> = world::init(vec![(), (), (), ()], 8, ());
+        let w: World<TestEnt> = World::new(vec![(), (), (), ()], ());
         for _ in 0..4 {
-            for (i, _) in w.iter_draws().into_iter().enumerate() {
+            for (i, _) in w.draws().into_iter().enumerate() {
                 println!("drawing {}", i);
             }
             println!("batch finished");

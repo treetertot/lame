@@ -1,4 +1,7 @@
 use std::cmp::Ordering;
+
+/// Holds data to be ordered by layer
+#[derive(Debug)]
 pub struct Capsule<T> {
     pub layer: u8,
     pub data: T,
