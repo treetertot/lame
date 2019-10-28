@@ -108,11 +108,17 @@ pub struct World<E: Entity> {
     frames: Receiver<Frame<E>>,
 }
 impl<E: Entity> World<E> {
-    pub fn new(start: Vec<E::Template>, shared: E::Shared) -> Self {
+    pub fn new(mut start: Vec<E::Template>, shared: E::Shared) -> Self {
         let (frame_out, frecv) = bounded(0);
         let (entity_senders, entrecvs): (Vec<_>, Vec<_>) = (0..*THREADS).map(|_| unbounded()).unzip();
+        let counts: Vec<_> = (0..*THREADS-1).map(|_| start.len() / *THREADS).chain(iter::once(start.len() - (*THREADS * (start.len() / *THREADS)))).collect();
+        for (chan, &i) in counts.iter().enumerate() {
+            for _ in 0..i {
+                entity_senders[chan].send(start.pop().unwrap()).unwrap();
+            }
+        }
         let secret = Arc::new(SecretWorld {
-            counts: Mutex::new((0..*THREADS-1).map(|_| start.len() / *THREADS).chain(iter::once(start.len() - (*THREADS * (start.len() / *THREADS)))).collect()),
+            counts: Mutex::new(counts),
             current_frame: RwLock::new(Frame::new(*THREADS)),
             shutdown: AtomicBool::new(false),
             entity_senders,
