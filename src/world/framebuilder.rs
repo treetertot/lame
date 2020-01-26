@@ -13,7 +13,7 @@ impl<E: Entity> Frame<E> {
         Frame {
             threads,
             done: Mutex::new(Vec::with_capacity(threads)),
-            drawings: Mutex::new(Vec::new()),
+            drawings: Mutex::new(Vec::with_capacity(threads)),
         }
     }
     pub fn run(&self, entities: &mut Vec<E>, world: &WeakWorld<E>, delta: f32) -> bool {
